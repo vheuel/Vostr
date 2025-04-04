@@ -2,7 +2,12 @@
 
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
-import { SimplePool, getPublicKey, finalizeEvent, type Event as NostrEvent } from "nostr-tools";
+import {
+  SimplePool,
+  getPublicKey,
+  finalizeEvent,
+  type Event as NostrEvent,
+} from "nostr-tools";
 import { useToast } from "@/hooks/use-toast";
 
 export type NostrContextType = {
@@ -46,7 +51,6 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         eoseSubTimeout: 3000,
         getTimeout: 3000,
       });
-
       setPool(newPool);
 
       const storedPublicKey = document.cookie
@@ -76,7 +80,6 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   const login = (inputPrivateKey?: string) => {
     try {
       let privKey = inputPrivateKey;
-
       if (!privKey) {
         privKey = window.crypto.getRandomValues(new Uint8Array(32)).reduce(
           (acc, val) => acc + val.toString(16).padStart(2, "0"),
@@ -108,7 +111,6 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     document.cookie = "nostr-public-key=; path=/; max-age=0";
     localStorage.removeItem("nostr-private-key");
-
     setPublicKey(null);
     setPrivateKey(null);
     setNotes([]);
