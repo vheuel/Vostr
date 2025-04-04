@@ -1,39 +1,41 @@
-import { relayInit, getPublicKey } from 'nostr-tools';
-
 const relays = [ "wss://relay.damus.io", "wss://nostr-pub.wellorder.net", "wss://relay.snort.social" ];
 
-const filter = { kinds: [1], // Kind 1 adalah postingan biasa limit: 50,  // Ambil maksimal 50 event terbaru };
+const pool = new SimplePool(); const filters = [{ kinds: [1], limit: 50 }];
 
-async function fetchEvents() { console.log("Starting Timeline effect dengan:"); console.log("Menggunakan relay:", relays); console.log("Menggunakan filter:", filter);
+async function fetchEvents() { console.log("Menghubungkan ke relay dan mengambil events...");
 
-let events = [];
 try {
-    for (const relayURL of relays) {
-        const relay = relayInit(relayURL);
-        await relay.connect();
-        console.log(`Terhubung ke relay: ${relayURL}`);
-        
-        const relayEvents = await relay.list([filter]);
-        console.log(`Events diterima dari ${relayURL}:`, relayEvents.length);
-        events.push(...relayEvents);
-        
-        await relay.close();
+    const events = await pool.get(relays, filters);
+    if (!events || events.length === 0) {
+        console.warn("Tidak ada event yang diterima.");
+    } else {
+        console.log("Event diterima:", events);
+        displayEvents(events);
     }
 } catch (error) {
     console.error("Error mengambil event:", error);
 }
 
-return events;
+}
+
+function displayEvents(events) { const timeline = document.getElementById("timeline"); if (!timeline) { console.error("Element #timeline tidak ditemukan di HTML."); return; }
+
+timeline.innerHTML = "";
+events.sort((a, b) => b.created_at - a.created_at); // Urutkan berdasarkan waktu
+
+events.forEach(event => {
+    const post = document.createElement("div");
+    post.classList.add("post");
+    post.innerHTML = `
+        <div class="post-content">
+            <p><strong>${event.pubkey}</strong>: ${event.content}</p>
+            <small>${new Date(event.created_at * 1000).toLocaleString()}</small>
+        </div>
+    `;
+    timeline.appendChild(post);
+});
 
 }
 
-async function updateTimeline() { const events = await fetchEvents(); if (events.length === 0) { console.log("Tidak ada postingan yang tersedia."); document.getElementById("timeline").innerHTML = "No posts available."; return; }
-
-const sortedEvents = events.sort((a, b) => b.created_at - a.created_at);
-const timeline = document.getElementById("timeline");
-timeline.innerHTML = sortedEvents.map(event => `<p>${event.content}</p>`).join("\n");
-
-}
-
-updateTimeline();
+document.addEventListener("DOMContentLoaded", fetchEvents);
 
