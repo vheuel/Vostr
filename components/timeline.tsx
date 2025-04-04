@@ -1,48 +1,39 @@
-import React, { useEffect, useState } from "react"; import { useNostrPool } from "../nostr/useNostrPool";
+import { relayInit, getPublicKey } from 'nostr-tools';
 
-const Timeline = ({ activeTab, publicKey }) => { const { pool, relays } = useNostrPool(); const [notes, setNotes] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(null);
+const relays = [ "wss://relay.damus.io", "wss://nostr-pub.wellorder.net", "wss://relay.snort.social" ];
 
-useEffect(() => { if (!pool || !relays || relays.length === 0) { console.log("Pool atau relays tidak tersedia"); return; }
+const filter = { kinds: [1], // Kind 1 adalah postingan biasa limit: 50,  // Ambil maksimal 50 event terbaru };
 
-setLoading(true);
-setError(null);
-setNotes([]);
+async function fetchEvents() { console.log("Starting Timeline effect dengan:"); console.log("Menggunakan relay:", relays); console.log("Menggunakan filter:", filter);
 
-console.log("Starting Timeline effect dengan:");
-console.log("Menggunakan relay:", relays);
-
-const filter = {
-  kinds: [1],
-  limit: 20,
-};
-
-if (activeTab === "following" && publicKey) {
-  filter.authors = [publicKey];
+let events = [];
+try {
+    for (const relayURL of relays) {
+        const relay = relayInit(relayURL);
+        await relay.connect();
+        console.log(`Terhubung ke relay: ${relayURL}`);
+        
+        const relayEvents = await relay.list([filter]);
+        console.log(`Events diterima dari ${relayURL}:`, relayEvents.length);
+        events.push(...relayEvents);
+        
+        await relay.close();
+    }
+} catch (error) {
+    console.error("Error mengambil event:", error);
 }
 
-console.log("Menggunakan filter:", filter);
+return events;
 
-pool
-  .get(relays, filter)
-  .then((receivedEvents) => {
-    console.log("Events diterima dari pool.get:", receivedEvents);
-    if (receivedEvents && Array.isArray(receivedEvents)) {
-      setNotes(receivedEvents.sort((a, b) => b.created_at - a.created_at));
-    } else {
-      console.log("Tidak ada event yang diterima atau format salah.");
-      setNotes([]);
-    }
-    setLoading(false);
-  })
-  .catch((e) => {
-    console.error("Error fetching events:", e);
-    setLoading(false);
-    setError("Failed to load notes. Please try again.");
-  });
+}
 
-}, [pool, relays, activeTab, publicKey]);
+async function updateTimeline() { const events = await fetchEvents(); if (events.length === 0) { console.log("Tidak ada postingan yang tersedia."); document.getElementById("timeline").innerHTML = "No posts available."; return; }
 
-return ( <div> {loading && <p>Loading...</p>} {error && <p style={{ color: "red" }}>{error}</p>} {notes.length === 0 && !loading && <p>No posts available.</p>} <ul> {notes.map((note) => ( <li key={note.id}>{note.content}</li> ))} </ul> </div> ); };
+const sortedEvents = events.sort((a, b) => b.created_at - a.created_at);
+const timeline = document.getElementById("timeline");
+timeline.innerHTML = sortedEvents.map(event => `<p>${event.content}</p>`).join("\n");
 
-export default Timeline;
+}
+
+updateTimeline();
 
