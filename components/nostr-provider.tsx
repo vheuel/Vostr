@@ -36,6 +36,8 @@ const NostrContext = createContext<NostrContextType>({
   addNote: () => {},
 });
 
+// hehe
+
 export function NostrProvider({ children }: { children: React.ReactNode }) {
   const [pool, setPool] = useState<SimplePool | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
