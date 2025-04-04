@@ -39,11 +39,12 @@ export function Timeline() {
         };
 
         if (activeTab === "following" && publicKey) {
-          const followEvents = await pool.get(relays, {
+          // Ambil event follow (contacts) sebagai referensi untuk siapa yang diikuti
+          const followEvents = await pool.list(relays, {
             kinds: [3],
             authors: [publicKey],
+            limit: 1,
           });
-
           const latestFollowEvent = followEvents?.[0];
           const followed = latestFollowEvent?.tags
             ?.filter((tag) => tag[0] === "p")
@@ -59,9 +60,10 @@ export function Timeline() {
           }
         }
 
-        const events = await pool.get(relays, filters);
+        // Gunakan pool.list untuk mendapatkan array events
+        const events = await pool.list(relays, filters);
 
-        if (!events.length) {
+        if (!Array.isArray(events) || events.length === 0) {
           setError("No notes found");
         }
 
