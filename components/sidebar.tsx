@@ -2,15 +2,30 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, User, MessageSquare, Bell, LogIn, Settings, Search, PenSquare } from "lucide-react"
+import {
+  Home,
+  User,
+  MessageSquare,
+  Bell,
+  LogIn,
+  Settings,
+  Search,
+  PenSquare,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useNostr } from "./nostr-provider"
-import { ComposeNoteDialog } from "./compose-note-dialog"
+import dynamic from "next/dynamic"
 import { useState } from "react"
+
+const ComposeNoteDialog = dynamic(() => import("./compose-note-dialog"), {
+  ssr: false,
+})
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { publicKey, logout } = useNostr()
+  const nostr = useNostr()
+  const publicKey = nostr?.publicKey ?? null
+  const logout = nostr?.logout ?? (() => {})
   const [composeOpen, setComposeOpen] = useState(false)
 
   const navItems = [
@@ -25,14 +40,12 @@ export function Sidebar() {
   return (
     <div className="w-16 md:w-64 flex flex-col h-screen sticky top-0 z-20">
       <div className="p-2 md:p-4 flex flex-col h-full">
-        {/* X Logo */}
         <div className="flex justify-center md:justify-start mb-4">
           <div className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-800">
             <span className="text-2xl font-bold">𝕏</span>
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="space-y-1 mb-4">
           {navItems.map((item) => (
             <Link
@@ -50,7 +63,6 @@ export function Sidebar() {
           ))}
         </nav>
 
-        {/* Post Button */}
         <Button
           className="rounded-full py-6 mb-4 bg-blue-500 hover:bg-blue-600 hidden md:flex"
           onClick={() => setComposeOpen(true)}
@@ -58,7 +70,6 @@ export function Sidebar() {
           <span>Post</span>
         </Button>
 
-        {/* Mobile Post Button */}
         <Button
           className="rounded-full p-3 aspect-square md:hidden bg-blue-500 hover:bg-blue-600"
           onClick={() => setComposeOpen(true)}
@@ -66,7 +77,6 @@ export function Sidebar() {
           <PenSquare size={24} />
         </Button>
 
-        {/* User Profile / Login */}
         <div className="mt-auto">
           {publicKey ? (
             <Button variant="ghost" className="w-full rounded-full justify-start p-3" onClick={logout}>
@@ -95,4 +105,3 @@ export function Sidebar() {
     </div>
   )
 }
-
