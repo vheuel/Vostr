@@ -1,102 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useNostr } from "./nostr-provider";
-import Note from "./note";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ComposeNote } from "./compose-note";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useEffect } from "react";
+import { useNostr } from "@/context/NostrContext";
+import { type Event as NostrEvent } from "nostr-tools";
+import Note from "./Note";
 
-type NostrEvent = {
-  id: string;
-  pubkey: string;
-  created_at: number;
-  kind: number;
-  tags: string[][];
-  content: string;
-  sig: string;
-};
-
-export function Timeline() {
-  const { pool, relays, publicKey } = useNostr();
-  const [notes, setNotes] = useState<NostrEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("for-you");
-  const [error, setError] = useState<string | null>(null);
+export default function Timeline() {
+  const { pool, relays, addNote, notes } = useNostr();
 
   useEffect(() => {
-    if (!pool || !relays?.length) return;
+    if (!pool) return;
 
-    setLoading(true);
-    setError(null);
-    setNotes([]);
+    const sub = pool.sub(relays, [
+      {
+        kinds: [1],
+        limit: 100,
+      },
+    ]);
 
-    const fetchNotes = async () => {
-      try {
-        const filters: any = {
-          kinds: [1], // kind 1 = text notes
-          limit: 50,
-        };
-
-        if (activeTab === "following" && publicKey) {
-          // Ambil event follow (contacts) sebagai referensi siapa yang diikuti
-          const followEvents = await pool.list(relays, {
-            kinds: [3],
-            authors: [publicKey],
-            limit: 1,
-          });
-          const latestFollowEvent = followEvents?.[0];
-          const followed = latestFollowEvent?.tags
-            ?.filter((tag) => tag[0] === "p")
-            ?.map((tag) => tag[1]);
-
-          if (followed?.length) {
-            filters.authors = followed;
-          } else {
-            setNotes([]);
-            setError("You are not following anyone yet");
-            setLoading(false);
-            return;
-          }
-        }
-
-        const events = await pool.list(relays, filters);
-
-        if (!Array.isArray(events) || events.length === 0) {
-          setError("No notes found");
-        }
-
-        setNotes(events);
-      } catch (err) {
-        console.error("Error fetching notes:", err);
-        setError("Failed to fetch notes");
-      } finally {
-        setLoading(false);
+    sub.on("event", (event: NostrEvent) => {
+      if (
+        event.id &&
+        event.pubkey &&
+        typeof event.content === "string" &&
+        typeof event.created_at === "number"
+      ) {
+        addNote(event);
+      } else {
+        console.warn("Ignored invalid note:", event);
       }
-    };
+    });
 
-    fetchNotes();
-  }, [pool, relays, activeTab, publicKey]);
+    return () => {
+      sub.unsub();
+    };
+  }, [pool]);
 
   return (
-    <div className="space-y-4">
-      <ComposeNote />
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="for-you">For You</TabsTrigger>
-          <TabsTrigger value="following">Following</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {loading ? (
-        Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 w-full" />
-        ))
-      ) : error ? (
-        <p className="text-red-500">{error}</p>
-      ) : (
-        notes.map((note) => <Note key={note.id} note={note} />)
-      )}
+    <div>
+      {notes.map((note) => (
+        <Note key={note.id} note={note} />
+      ))}
     </div>
   );
 }
