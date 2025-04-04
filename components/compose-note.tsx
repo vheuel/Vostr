@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useNostr } from "@/components/nostr-provider"
+import { useNostr } from "@/components/nostr-provider" // path diperbaiki
 
 export default function ComposeNote() {
   const [content, setContent] = useState("")
