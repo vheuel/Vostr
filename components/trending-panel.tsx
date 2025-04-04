@@ -19,6 +19,12 @@ type SuggestedUser = {
   about?: string
 }
 
+type NostrEvent = {
+  kind: number
+  content: string
+  pubkey: string
+}
+
 export function TrendingPanel() {
   const { pool, relays } = useNostr()
   const [trends, setTrends] = useState<Trend[]>([])
@@ -26,75 +32,48 @@ export function TrendingPanel() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!pool) return
+    if (!pool || !relays?.length) return
 
     setLoading(true)
 
-    // Analyze recent notes to find trending hashtags
     const fetchTrends = async () => {
       try {
-        // Get recent notes
-        const events = await fetchEvents(pool, relays, [{ kinds: [1], limit: 100 }])
+        const events: NostrEvent[] = await fetchEvents(pool, relays, [{ kinds: [1], limit: 100 }])
 
-        // Extract hashtags from content
         const tagCounts = new Map<string, number>()
 
         events.forEach((event) => {
-          if (event.kind !== 1 || !event.content) return
-
-          // Extract hashtags from content
-          const hashtags = event.content.match(/#[\w]+/g) || []
-
-          // Count occurrences
+          const hashtags = event.content?.match(/#[\w]+/g) || []
           hashtags.forEach((tag) => {
-            const cleanTag = tag.substring(1) // Remove # prefix
-            const count = tagCounts.get(cleanTag) || 0
-            tagCounts.set(cleanTag, count + 1)
+            const cleanTag = tag.substring(1)
+            tagCounts.set(cleanTag, (tagCounts.get(cleanTag) || 0) + 1)
           })
         })
 
-        // Convert to array and sort by count
         const trendingTags = Array.from(tagCounts.entries())
-          .map(([tag, count]) => ({
-            tag,
-            category: getCategoryForTag(tag),
-            count,
-          }))
+          .map(([tag, count]) => ({ tag, category: getCategoryForTag(tag), count }))
           .sort((a, b) => b.count - a.count)
-          .slice(0, 3) // Top 3 trends
+          .slice(0, 3)
 
         setTrends(trendingTags)
 
-        // Get some active users for "Who to follow"
-        const activeUsers = events
-          .map((e) => e.pubkey)
-          .filter((v, i, a) => a.indexOf(v) === i) // Unique pubkeys
-          .slice(0, 5) // Top 5 users
+        const activeUsers = Array.from(new Set(events.map((e) => e.pubkey))).slice(0, 5)
+        const profileEvents: NostrEvent[] = await fetchEvents(pool, relays, [{ kinds: [0], authors: activeUsers }])
 
-        // Fetch profiles for these users
-        const profileEvents = await fetchEvents(pool, relays, [{ kinds: [0], authors: activeUsers }])
-
-        // Process profile metadata
         const profileData = profileEvents.reduce((acc: SuggestedUser[], event) => {
-          if (event.kind === 0) {
-            try {
-              const metadata = JSON.parse(event.content)
-              acc.push({
-                pubkey: event.pubkey,
-                name: metadata.name,
-                about: metadata.about,
-              })
-            } catch (e) {
-              console.error("Failed to parse profile metadata:", e)
-            }
+          try {
+            const metadata = JSON.parse(event.content)
+            acc.push({ pubkey: event.pubkey, name: metadata.name, about: metadata.about })
+          } catch (e) {
+            console.error("Invalid metadata JSON", e)
           }
           return acc
         }, [])
 
-        setSuggestedUsers(profileData.slice(0, 2)) // Show top 2 users
+        setSuggestedUsers(profileData.slice(0, 2))
         setLoading(false)
-      } catch (e) {
-        console.error("Error fetching trends:", e)
+      } catch (err) {
+        console.error("Failed to fetch trends:", err)
         setLoading(false)
       }
     }
@@ -102,55 +81,35 @@ export function TrendingPanel() {
     fetchTrends()
   }, [pool, relays])
 
-  // Helper function to fetch events using available methods
   const fetchEvents = async (pool: any, relays: string[], filters: any[]) => {
-    return new Promise((resolve) => {
-      const events: any[] = []
-
-      try {
-        const sub = pool.subscribeMany(relays, filters, {
-          onEvent: (event: any) => {
-            events.push(event)
-          },
-          onEose: () => {
-            resolve(events)
-            if (sub && typeof sub.close === "function") {
-              sub.close()
-            }
-          },
-        })
-
-        // Timeout fallback
-        setTimeout(() => {
+    return new Promise<NostrEvent[]>((resolve) => {
+      const events: NostrEvent[] = []
+      const sub = pool.subscribeMany(relays, filters, {
+        onEvent: (event: NostrEvent) => events.push(event),
+        onEose: () => {
           resolve(events)
-          if (sub && typeof sub.close === "function") {
-            sub.close()
-          }
-        }, 5000)
-      } catch (e) {
-        console.error("Error in subscription:", e)
-        resolve([])
-      }
+          sub?.close?.()
+        },
+      })
+
+      setTimeout(() => {
+        resolve(events)
+        sub?.close?.()
+      }, 5000)
     })
   }
 
-  // Helper to categorize tags
-  const getCategoryForTag = (tag: string) => {
-    const techTags = ["nostr", "bitcoin", "web", "dev", "programming", "tech", "code"]
-    const cryptoTags = ["bitcoin", "btc", "lightning", "crypto", "nft", "defi"]
+  const getCategoryForTag = (tag: string): string => {
+    const tech = ["nostr", "bitcoin", "web", "dev", "programming", "tech", "code"]
+    const crypto = ["bitcoin", "btc", "lightning", "crypto", "nft", "defi"]
+    const lower = tag.toLowerCase()
 
-    tag = tag.toLowerCase()
-
-    if (techTags.some((t) => tag.includes(t))) return "Technology"
-    if (cryptoTags.some((t) => tag.includes(t))) return "Cryptocurrency"
-
+    if (tech.some((t) => lower.includes(t))) return "Technology"
+    if (crypto.some((t) => lower.includes(t))) return "Cryptocurrency"
     return "Trending"
   }
 
-  // Truncate public key for display
-  const truncatePubkey = (pubkey: string) => {
-    return `${pubkey.substring(0, 8)}...`
-  }
+  const truncatePubkey = (pubkey: string): string => `${pubkey.slice(0, 8)}...`
 
   return (
     <div className="w-80 p-4 hidden lg:block space-y-4 sticky top-0 h-screen overflow-y-auto">
@@ -165,15 +124,13 @@ export function TrendingPanel() {
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
-            Array(3)
-              .fill(0)
-              .map((_, i) => (
-                <div key={i} className="space-y-1">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-5 w-32" />
-                  <Skeleton className="h-4 w-20" />
-                </div>
-              ))
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="space-y-1">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+            ))
           ) : trends.length === 0 ? (
             <div className="text-gray-500 dark:text-gray-400">No trending topics found</div>
           ) : (
@@ -194,20 +151,18 @@ export function TrendingPanel() {
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
-            Array(2)
-              .fill(0)
-              .map((_, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="w-10 h-10 rounded-full" />
-                    <div>
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-3 w-32 mt-1" />
-                    </div>
+            Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="w-10 h-10 rounded-full" />
+                  <div>
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3 w-32 mt-1" />
                   </div>
-                  <Skeleton className="h-8 w-16" />
                 </div>
-              ))
+                <Skeleton className="h-8 w-16" />
+              </div>
+            ))
           ) : suggestedUsers.length === 0 ? (
             <div className="text-gray-500 dark:text-gray-400">No suggestions available</div>
           ) : (
@@ -215,12 +170,12 @@ export function TrendingPanel() {
               <div key={user.pubkey} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                    {user.name ? user.name.substring(0, 2).toUpperCase() : user.pubkey.substring(0, 2).toUpperCase()}
+                    {(user.name || user.pubkey).substring(0, 2).toUpperCase()}
                   </div>
                   <div>
                     <div className="font-bold">{user.name || truncatePubkey(user.pubkey)}</div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      {user.about ? user.about.substring(0, 30) + (user.about.length > 30 ? "..." : "") : "Nostr User"}
+                      {user.about?.length ? `${user.about.slice(0, 30)}${user.about.length > 30 ? "..." : ""}` : "Nostr User"}
                     </div>
                   </div>
                 </div>
@@ -233,4 +188,3 @@ export function TrendingPanel() {
     </div>
   )
 }
-
