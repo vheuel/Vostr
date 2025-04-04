@@ -1,6 +1,5 @@
 import React from "react";
 
-
 type NoteProps = { id: string; pubkey: string; content: string; created_at: number; };
 
 const formatDate = (timestamp: number) => { const date = new Date(timestamp * 1000); return date.toLocaleString(); };
