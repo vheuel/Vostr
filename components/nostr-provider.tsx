@@ -47,13 +47,11 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      console.log("Initializing Nostr pool...");
       const newPool = new SimplePool({
         eoseSubTimeout: 3000,
         getTimeout: 3000,
       });
       setPool(newPool);
-      console.log("Pool created.");
 
       const storedPublicKey = document.cookie
         .split("; ")
@@ -62,16 +60,12 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
       const storedPrivateKey = localStorage.getItem("nostr-private-key");
 
-      console.log("Stored public key:", storedPublicKey);
-      console.log("Stored private key exists:", !!storedPrivateKey);
-
       if (storedPublicKey && storedPrivateKey) {
         setPublicKey(storedPublicKey);
         setPrivateKey(storedPrivateKey);
       }
 
       return () => {
-        console.log("Closing Nostr pool...");
         try {
           newPool.close(relays);
         } catch (error) {
@@ -79,21 +73,28 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         }
       };
     } catch (error) {
-      console.error("Error initializing Nostr provider:", error);
+      console.error("Error initializing Nostr pool:", error);
     }
   }, []);
 
   const login = (inputPrivateKey?: string) => {
     try {
       let privKey = inputPrivateKey;
+
       if (!privKey) {
-        privKey = window.crypto.getRandomValues(new Uint8Array(32)).reduce(
-          (acc, val) => acc + val.toString(16).padStart(2, "0"),
-          ""
-        );
+        const array = new Uint8Array(32);
+        if (typeof window !== "undefined" && window.crypto) {
+          window.crypto.getRandomValues(array);
+        } else {
+          throw new Error("Crypto not available in this environment");
+        }
+        privKey = Array.from(array).map((b) => b.toString(16).padStart(2, "0")).join("");
       }
 
+      console.log("Generating pubKey from privKey:", privKey);
       const pubKey = getPublicKey(privKey);
+      console.log("Generated pubKey:", pubKey);
+
       document.cookie = `nostr-public-key=${pubKey}; path=/; max-age=2592000`;
       localStorage.setItem("nostr-private-key", privKey);
 
@@ -104,10 +105,8 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         title: "Logged in successfully",
         description: "You are now connected to Nostr",
       });
-
-      console.log("Login success. Public key:", pubKey);
     } catch (error) {
-      console.error("Login failed:", error);
+      console.error("Login error:", error);
       toast({
         title: "Login failed",
         description: "Invalid private key",
@@ -127,8 +126,6 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       title: "Logged out",
       description: "You have been disconnected from Nostr",
     });
-
-    console.log("User logged out.");
   };
 
   const publishNote = async (content: string) => {
@@ -158,10 +155,8 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         title: "Note published",
         description: "Your note has been published to Nostr",
       });
-
-      console.log("Note published:", signedEvent);
     } catch (error) {
-      console.error("Error publishing note:", error);
+      console.error("Publish error:", error);
       toast({
         title: "Failed to publish note",
         description: "An error occurred while publishing your note",
@@ -183,8 +178,6 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
     const signedEvent = finalizeEvent(event, privateKey);
     await pool.publish(relays, signedEvent);
-
-    console.log("Reaction published:", signedEvent);
   };
 
   const publishRepost = async (eventId: string) => {
@@ -200,8 +193,6 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
     const signedEvent = finalizeEvent(event, privateKey);
     await pool.publish(relays, signedEvent);
-
-    console.log("Repost published:", signedEvent);
   };
 
   const addNote = (note: NostrEvent) => {
