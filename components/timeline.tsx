@@ -26,71 +26,84 @@ export function Timeline() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!pool) return
+    if (!pool) {
+      console.warn("Pool belum tersedia.")
+      return
+    }
+    if (!relays || relays.length === 0) {
+      console.warn("Relays tidak tersedia. Pastikan setidaknya ada satu relay yang didefinisikan.")
+    }
+    console.log("Starting Timeline effect dengan:", { pool, relays, publicKey, activeTab })
 
-    // Reset state sebelum fetch
+    // Reset state
     setLoading(true)
     setError(null)
     setNotes([])
 
-    // Safety timeout agar UI tetap responsif jika koneksi lambat
+    // Safety timeout (15 detik)
     const safetyTimeout = setTimeout(() => {
+      console.error("Timeout: Tidak ada respons dalam 15 detik.")
       setLoading(false)
       setError("Connection timed out. Please try again later.")
     }, 15000)
 
-    // Gunakan relay yang tersedia atau fallback ke relay default
-    const singleRelay = relays[0] || "wss://relay.damus.io"
+    // Pilih relay yang akan digunakan (gunakan relay pertama atau fallback)
+    const singleRelay = (relays && relays[0]) || "wss://relay.damus.io"
+    console.log("Menggunakan relay:", singleRelay)
+
+    // Persiapkan filter
     const filter: any = {
       kinds: [1],
       limit: 20,
     }
-
-    // Jika tab "following" aktif, tambahkan filter berdasarkan publicKey
     if (activeTab === "following" && publicKey) {
       filter.authors = [publicKey]
     }
+    console.log("Menggunakan filter:", filter)
 
-    // Koleksi untuk menyimpan event yang diterima
+    // Koleksi event
     const events: NostrEvent[] = []
 
-    // Cek apakah pool memiliki method get
+    // Cek metode yang tersedia di pool
     if (typeof pool.get === "function") {
+      console.log("Menggunakan pool.get untuk mengambil events.")
       pool
         .get(relays, filter)
         .then((receivedEvents: NostrEvent[]) => {
-          console.log("Received events from pool.get:", receivedEvents)
+          console.log("Events diterima dari pool.get:", receivedEvents)
           if (receivedEvents && Array.isArray(receivedEvents)) {
-            setNotes(receivedEvents.sort((a, b) => b.created_at - a.created_at))
+            const sorted = receivedEvents.sort((a, b) => b.created_at - a.created_at)
+            setNotes(sorted)
           } else {
-            console.log("Received null or invalid events from pool.get")
+            console.warn("Data event tidak valid dari pool.get")
             setNotes([])
           }
           setLoading(false)
           clearTimeout(safetyTimeout)
         })
         .catch((e: any) => {
-          console.error("Error fetching events with pool.get:", e)
-          setLoading(false)
+          console.error("Error di pool.get:", e)
           setError("Failed to load notes. Please try again.")
+          setLoading(false)
           clearTimeout(safetyTimeout)
         })
-    }
-    // Jika pool.get tidak tersedia, gunakan subscribeMany
-    else if (typeof pool.subscribeMany === "function") {
+    } else if (typeof pool.subscribeMany === "function") {
+      console.log("Menggunakan pool.subscribeMany untuk berlangganan events.")
       const sub = pool.subscribeMany(
         [singleRelay],
         [filter],
         {
           onEvent: (event: NostrEvent) => {
-            console.log("Event received from subscribeMany:", event)
+            console.log("Event diterima via subscribeMany:", event)
             events.push(event)
           },
           onEose: () => {
-            console.log("onEose fired. Collected events:", events)
-            setNotes(events.sort((a, b) => b.created_at - a.created_at))
+            console.log("onEose terpanggil. Events yang dikumpulkan:", events)
+            const sorted = events.sort((a, b) => b.created_at - a.created_at)
+            setNotes(sorted)
             setLoading(false)
             clearTimeout(safetyTimeout)
+            // Tutup langganan jika memungkinkan
             if (sub && typeof sub.close === "function") {
               sub.close()
             } else if (sub && typeof sub.unsub === "function") {
@@ -103,8 +116,9 @@ export function Timeline() {
       // Fallback jika onEose tidak terpanggil dalam 5 detik
       setTimeout(() => {
         if (loading) {
-          console.log("Fallback timeout reached. Events so far:", events)
-          setNotes(events.sort((a, b) => b.created_at - a.created_at))
+          console.warn("Fallback timeout subscribeMany terpanggil. Events sementara:", events)
+          const sorted = events.sort((a, b) => b.created_at - a.created_at)
+          setNotes(sorted)
           setLoading(false)
           clearTimeout(safetyTimeout)
           if (sub && typeof sub.close === "function") {
@@ -115,20 +129,19 @@ export function Timeline() {
         }
       }, 5000)
     } else {
-      console.error("No supported subscription method found on pool")
+      console.error("Tidak ditemukan metode langganan yang didukung pada pool.")
       setError("Subscription method not supported.")
       setLoading(false)
       clearTimeout(safetyTimeout)
     }
 
-    // Bersihkan timeout saat komponen di-unmount
     return () => {
       clearTimeout(safetyTimeout)
     }
   }, [pool, relays, activeTab, publicKey])
 
-  // Fungsi untuk refresh timeline, misalnya setelah mempublikasikan note baru
   const handleRefresh = () => {
+    console.log("Refreshing timeline...")
     setLoading(true)
   }
 
@@ -139,6 +152,7 @@ export function Timeline() {
       <Tabs
         defaultValue="for-you"
         onValueChange={(value) => {
+          console.log("Tab berubah ke:", value)
           setActiveTab(value)
           setLoading(true)
         }}
