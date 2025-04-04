@@ -1,24 +1,51 @@
 "use client"
 
 import { useState } from "react"
-import { useNostr } from "./nostr-provider"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { useNostr } from "@/lib/nostr-provider"
 
-export function ComposeNote() {
-  const { publishNote } = useNostr()
+export default function ComposeNote() {
   const [content, setContent] = useState("")
+  const [loading, setLoading] = useState(false)
+  const { publishNote, publicKey } = useNostr()
 
   const handleSubmit = async () => {
-    if (content.trim()) {
+    if (!content.trim()) return
+
+    setLoading(true)
+    try {
       await publishNote(content)
       setContent("")
+    } catch (error) {
+      console.error("Failed to publish note:", error)
+    } finally {
+      setLoading(false)
     }
   }
 
+  if (!publicKey) {
+    return (
+      <div className="border rounded-xl p-4 text-sm text-muted-foreground">
+        Login untuk mengirim catatan.
+      </div>
+    )
+  }
+
   return (
-    <div>
-      <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Tulis catatan..." />
-      <Button onClick={handleSubmit}>Kirim</Button>
+    <div className="border rounded-xl p-4 mb-4">
+      <Textarea
+        placeholder="Apa yang sedang kamu pikirkan?"
+        className="mb-2"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={4}
+      />
+      <div className="flex justify-end">
+        <Button onClick={handleSubmit} disabled={loading}>
+          {loading ? "Mengirim..." : "Kirim"}
+        </Button>
+      </div>
     </div>
   )
 }
