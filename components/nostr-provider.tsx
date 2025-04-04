@@ -17,9 +17,9 @@ export type NostrContextType = {
   notes: NostrEvent[];
   login: (privateKey?: string) => void;
   logout: () => void;
-  publishNote: (content: string) => Promise<void>;
-  publishReaction: (eventId: string, reaction: string) => Promise<void>;
-  publishRepost: (eventId: string) => Promise<void>;
+  publishNote: (content: string) => void;
+  publishReaction: (eventId: string, reaction: string) => void;
+  publishRepost: (eventId: string) => void;
   addNote: (note: NostrEvent) => void;
 };
 
@@ -30,9 +30,9 @@ const NostrContext = createContext<NostrContextType>({
   notes: [],
   login: () => {},
   logout: () => {},
-  publishNote: async () => {},
-  publishReaction: async () => {},
-  publishRepost: async () => {},
+  publishNote: () => {},
+  publishReaction: () => {},
+  publishRepost: () => {},
   addNote: () => {},
 });
 
@@ -87,6 +87,11 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
+      // Validasi format hex
+      if (!/^[0-9a-f]{64}$/i.test(privKey)) {
+        throw new Error("Invalid private key format");
+      }
+
       const pubKey = getPublicKey(privKey);
 
       document.cookie = `nostr-public-key=${pubKey}; path=/; max-age=2592000`;
@@ -100,6 +105,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         description: "You are now connected to Nostr",
       });
     } catch (error) {
+      console.error("Login error:", error);
       toast({
         title: "Login failed",
         description: "Invalid private key",
@@ -121,7 +127,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const publishNote = async (content: string) => {
+  const publishNote = (content: string) => {
     if (!pool || !publicKey || !privateKey) {
       toast({
         title: "Not logged in",
@@ -141,7 +147,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       };
 
       const signedEvent = finalizeEvent(event, privateKey);
-      await pool.publish(relays, signedEvent);
+      pool.publish(relays, signedEvent);
       addNote(signedEvent);
 
       toast({
@@ -149,6 +155,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         description: "Your note has been published to Nostr",
       });
     } catch (error) {
+      console.error("Publish note error:", error);
       toast({
         title: "Failed to publish note",
         description: "An error occurred while publishing your note",
@@ -157,34 +164,42 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const publishReaction = async (eventId: string, reaction: string) => {
+  const publishReaction = (eventId: string, reaction: string) => {
     if (!pool || !publicKey || !privateKey) return;
 
-    const event = {
-      kind: 7,
-      pubkey: publicKey,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [["e", eventId]],
-      content: reaction,
-    };
+    try {
+      const event = {
+        kind: 7,
+        pubkey: publicKey,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [["e", eventId]],
+        content: reaction,
+      };
 
-    const signedEvent = finalizeEvent(event, privateKey);
-    await pool.publish(relays, signedEvent);
+      const signedEvent = finalizeEvent(event, privateKey);
+      pool.publish(relays, signedEvent);
+    } catch (error) {
+      console.error("Publish reaction error:", error);
+    }
   };
 
-  const publishRepost = async (eventId: string) => {
+  const publishRepost = (eventId: string) => {
     if (!pool || !publicKey || !privateKey) return;
 
-    const event = {
-      kind: 6,
-      pubkey: publicKey,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [["e", eventId]],
-      content: "",
-    };
+    try {
+      const event = {
+        kind: 6,
+        pubkey: publicKey,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [["e", eventId]],
+        content: "",
+      };
 
-    const signedEvent = finalizeEvent(event, privateKey);
-    await pool.publish(relays, signedEvent);
+      const signedEvent = finalizeEvent(event, privateKey);
+      pool.publish(relays, signedEvent);
+    } catch (error) {
+      console.error("Publish repost error:", error);
+    }
   };
 
   const addNote = (note: NostrEvent) => {
