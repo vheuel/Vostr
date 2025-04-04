@@ -1,12 +1,12 @@
-"use client"
+import React from "react";
 
-type NoteProps = { event: { pubkey: string; content: string; created_at: number } }
+type NoteProps = { id: string; pubkey: string; content: string; created_at: number; };
 
-export function Note({ event }: NoteProps) {
-  return (
-    <div className="border p-4 my-2">
-      <p><strong>{event.pubkey}</strong> <small>{new Date(event.created_at * 1000).toLocaleString()}</small></p>
-      <p>{event.content}</p>
-    </div>
-  )
-}
+const formatDate = (timestamp: number) => { const date = new Date(timestamp * 1000); return date.toLocaleString(); };
+
+const Note: React.FC<{ note: NoteProps }> = ({ note }) => { if (!note || !note.content) { return <p className="text-gray-500">Catatan tidak tersedia</p>; }
+
+return ( <div className="border p-4 rounded-lg shadow-md bg-white my-2"> <p className="text-sm text-gray-600">{note.pubkey.substring(0, 10)}...</p> <p className="text-lg font-semibold">{note.content}</p> <p className="text-xs text-gray-500">{formatDate(note.created_at)}</p> </div> ); };
+
+export default Note;
+
