@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
 import { SimplePool, getPublicKey, finalizeEvent } from "nostr-tools"
 import { useToast } from "@/hooks/use-toast"
@@ -13,8 +11,6 @@ type NostrContextType = {
   login: (privateKey?: string) => void
   logout: () => void
   publishNote: (content: string) => Promise<void>
-  publishReaction: (eventId: string, reaction: string) => Promise<void>
-  publishRepost: (eventId: string) => Promise<void>
 }
 
 const NostrContext = createContext<NostrContextType>({
@@ -24,8 +20,6 @@ const NostrContext = createContext<NostrContextType>({
   login: () => {},
   logout: () => {},
   publishNote: async () => {},
-  publishReaction: async () => {},
-  publishRepost: async () => {},
 })
 
 export function NostrProvider({ children }: { children: React.ReactNode }) {
@@ -34,21 +28,20 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   const [privateKey, setPrivateKey] = useState<string | null>(null)
   const { toast } = useToast()
 
-  // Update the relays list to use only the most reliable ones
-  const relays = ["wss://relay.damus.io", "wss://nos.lol"]
+  // Relays utama yang digunakan
+  const relays = ["wss://relay.damus.io", "wss://nos.lol", "wss://nostr.wine"]
 
-  // Update the pool initialization with better error handling
   useEffect(() => {
     try {
-      // Create a new pool with options for better error handling
+      console.log("Menginisialisasi Nostr Pool...")
+
       const newPool = new SimplePool({
-        eoseSubTimeout: 3_000, // 3 seconds timeout for EOSE
-        getTimeout: 3_000, // 3 seconds timeout for GET requests
+        eoseSubTimeout: 5000, // Perpanjang timeout
+        getTimeout: 7000, // Timeout lebih lama
       })
 
       setPool(newPool)
 
-      // Check for existing login
       const storedPublicKey = document.cookie
         .split("; ")
         .find((row) => row.startsWith("nostr-public-key="))
@@ -57,29 +50,27 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       const storedPrivateKey = localStorage.getItem("nostr-private-key")
 
       if (storedPublicKey && storedPrivateKey) {
+        console.log("Ditemukan kunci publik dari cookie:", storedPublicKey)
         setPublicKey(storedPublicKey)
         setPrivateKey(storedPrivateKey)
       }
 
       return () => {
+        console.log("Menutup koneksi ke relay...")
         try {
-          // Safely close the pool
           newPool.close(relays)
         } catch (error) {
-          console.error("Error closing pool:", error)
+          console.error("Gagal menutup pool:", error)
         }
       }
     } catch (error) {
-      console.error("Error initializing Nostr pool:", error)
-      // Continue without a pool - the UI will handle this gracefully
+      console.error("Gagal menginisialisasi Nostr pool:", error)
     }
   }, [])
 
   const login = (inputPrivateKey?: string) => {
     try {
       let privKey = inputPrivateKey
-
-      // Generate a new key if none provided
       if (!privKey) {
         privKey = window.crypto
           .getRandomValues(new Uint8Array(32))
@@ -87,24 +78,15 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       }
 
       const pubKey = getPublicKey(privKey)
-
-      // Store keys
-      document.cookie = `nostr-public-key=${pubKey}; path=/; max-age=2592000` // 30 days
+      document.cookie = `nostr-public-key=${pubKey}; path=/; max-age=2592000`
       localStorage.setItem("nostr-private-key", privKey)
 
       setPublicKey(pubKey)
       setPrivateKey(privKey)
 
-      toast({
-        title: "Logged in successfully",
-        description: "You are now connected to Nostr",
-      })
+      toast({ title: "Login berhasil", description: "Anda terhubung ke Nostr" })
     } catch (error) {
-      toast({
-        title: "Login failed",
-        description: "Invalid private key",
-        variant: "destructive",
-      })
+      toast({ title: "Login gagal", description: "Kunci tidak valid", variant: "destructive" })
     }
   }
 
@@ -114,19 +96,12 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     setPublicKey(null)
     setPrivateKey(null)
 
-    toast({
-      title: "Logged out",
-      description: "You have been disconnected from Nostr",
-    })
+    toast({ title: "Logout berhasil", description: "Anda telah keluar dari Nostr" })
   }
 
   const publishNote = async (content: string) => {
     if (!pool || !publicKey || !privateKey) {
-      toast({
-        title: "Not logged in",
-        description: "Please log in to publish notes",
-        variant: "destructive",
-      })
+      toast({ title: "Tidak masuk", description: "Silakan login dulu", variant: "destructive" })
       return
     }
 
@@ -139,115 +114,20 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         content,
       }
 
-      // Finalize the event with the private key
       const signedEvent = finalizeEvent(event, privateKey)
-
       await pool.publish(relays, signedEvent)
 
-      toast({
-        title: "Note published",
-        description: "Your note has been published to Nostr",
-      })
+      toast({ title: "Catatan dipublikasikan", description: "Catatan telah dikirim ke Nostr" })
     } catch (error) {
-      toast({
-        title: "Failed to publish note",
-        description: "An error occurred while publishing your note",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const publishReaction = async (eventId: string, reaction: string) => {
-    if (!pool || !publicKey || !privateKey) {
-      toast({
-        title: "Not logged in",
-        description: "Please log in to react to notes",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const event = {
-        kind: 7,
-        pubkey: publicKey,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [["e", eventId]],
-        content: reaction,
-      }
-
-      // Finalize the event with the private key
-      const signedEvent = finalizeEvent(event, privateKey)
-
-      await pool.publish(relays, signedEvent)
-
-      toast({
-        title: "Reaction published",
-        description: "Your reaction has been published to Nostr",
-      })
-    } catch (error) {
-      toast({
-        title: "Failed to publish reaction",
-        description: "An error occurred while publishing your reaction",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const publishRepost = async (eventId: string) => {
-    if (!pool || !publicKey || !privateKey) {
-      toast({
-        title: "Not logged in",
-        description: "Please log in to repost notes",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const event = {
-        kind: 6,
-        pubkey: publicKey,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [["e", eventId]],
-        content: "",
-      }
-
-      // Finalize the event with the private key
-      const signedEvent = finalizeEvent(event, privateKey)
-
-      await pool.publish(relays, signedEvent)
-
-      toast({
-        title: "Repost published",
-        description: "Your repost has been published to Nostr",
-      })
-    } catch (error) {
-      toast({
-        title: "Failed to publish repost",
-        description: "An error occurred while publishing your repost",
-        variant: "destructive",
-      })
+      toast({ title: "Gagal dipublikasikan", description: "Terjadi kesalahan", variant: "destructive" })
     }
   }
 
   return (
-    <NostrContext.Provider
-      value={{
-        pool,
-        publicKey,
-        relays,
-        login,
-        logout,
-        publishNote,
-        publishReaction,
-        publishRepost,
-      }}
-    >
+    <NostrContext.Provider value={{ pool, publicKey, relays, login, logout, publishNote }}>
       {children}
     </NostrContext.Provider>
   )
 }
 
 export const useNostr = () => useContext(NostrContext)
-
