@@ -28,34 +28,38 @@ export function Timeline() {
   useEffect(() => {
     if (!pool) return
 
+    // Reset state sebelum fetch
     setLoading(true)
     setError(null)
     setNotes([])
 
-    // Safety timeout untuk memastikan UI merespon jika koneksi terlalu lama
+    // Safety timeout agar UI tetap responsif jika koneksi lambat
     const safetyTimeout = setTimeout(() => {
       setLoading(false)
       setError("Connection timed out. Please try again later.")
     }, 15000)
 
+    // Gunakan relay yang tersedia atau fallback ke relay default
     const singleRelay = relays[0] || "wss://relay.damus.io"
     const filter: any = {
       kinds: [1],
       limit: 20,
     }
 
-    // Filter khusus untuk tab "following"
+    // Jika tab "following" aktif, tambahkan filter berdasarkan publicKey
     if (activeTab === "following" && publicKey) {
       filter.authors = [publicKey]
     }
 
+    // Koleksi untuk menyimpan event yang diterima
     const events: NostrEvent[] = []
 
-    // Gunakan metode pool.get jika tersedia
+    // Cek apakah pool memiliki method get
     if (typeof pool.get === "function") {
       pool
         .get(relays, filter)
         .then((receivedEvents: NostrEvent[]) => {
+          console.log("Received events from pool.get:", receivedEvents)
           if (receivedEvents && Array.isArray(receivedEvents)) {
             setNotes(receivedEvents.sort((a, b) => b.created_at - a.created_at))
           } else {
@@ -72,20 +76,21 @@ export function Timeline() {
           clearTimeout(safetyTimeout)
         })
     }
-    // Jika pool.get tidak tersedia, gunakan subscribeMany dengan objek konfigurasi
+    // Jika pool.get tidak tersedia, gunakan subscribeMany
     else if (typeof pool.subscribeMany === "function") {
       const sub = pool.subscribeMany(
         [singleRelay],
         [filter],
         {
           onEvent: (event: NostrEvent) => {
+            console.log("Event received from subscribeMany:", event)
             events.push(event)
           },
           onEose: () => {
+            console.log("onEose fired. Collected events:", events)
             setNotes(events.sort((a, b) => b.created_at - a.created_at))
             setLoading(false)
             clearTimeout(safetyTimeout)
-            // Coba tutup langganan jika memungkinkan
             if (sub && typeof sub.close === "function") {
               sub.close()
             } else if (sub && typeof sub.unsub === "function") {
@@ -95,9 +100,10 @@ export function Timeline() {
         }
       )
 
-      // Fallback jika onEose tidak terpanggil
+      // Fallback jika onEose tidak terpanggil dalam 5 detik
       setTimeout(() => {
         if (loading) {
+          console.log("Fallback timeout reached. Events so far:", events)
           setNotes(events.sort((a, b) => b.created_at - a.created_at))
           setLoading(false)
           clearTimeout(safetyTimeout)
@@ -115,12 +121,13 @@ export function Timeline() {
       clearTimeout(safetyTimeout)
     }
 
+    // Bersihkan timeout saat komponen di-unmount
     return () => {
       clearTimeout(safetyTimeout)
     }
   }, [pool, relays, activeTab, publicKey])
 
-  // Fungsi untuk me-refresh timeline
+  // Fungsi untuk refresh timeline, misalnya setelah mempublikasikan note baru
   const handleRefresh = () => {
     setLoading(true)
   }
