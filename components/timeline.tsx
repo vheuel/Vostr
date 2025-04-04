@@ -34,13 +34,17 @@ export function Timeline() {
     const fetchNotes = async () => {
       try {
         const filters: any = {
-          kinds: [1],
+          kinds: [1], // kind 1 = text notes
           limit: 50,
         }
 
         if (activeTab === "following" && publicKey) {
-          // Filter by people user follows
-          const followEvents = await pool.get(relays, { kinds: [3], authors: [publicKey] }) // Kind 3 = contacts
+          const followEvents = await pool.list(relays, {
+            kinds: [3], // kind 3 = follow list
+            authors: [publicKey],
+            limit: 1,
+          })
+
           const latestFollowEvent = followEvents?.[0]
           const followed = latestFollowEvent?.tags
             ?.filter((tag) => tag[0] === "p")
@@ -56,9 +60,9 @@ export function Timeline() {
           }
         }
 
-        const events = await pool.get(relays, filters)
+        const events = await pool.list(relays, filters)
 
-        if (!events.length) {
+        if (!Array.isArray(events) || events.length === 0) {
           setError("No notes found")
         }
 
@@ -85,7 +89,9 @@ export function Timeline() {
       </Tabs>
 
       {loading ? (
-        Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)
+        Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-24 w-full" />
+        ))
       ) : error ? (
         <p className="text-red-500">{error}</p>
       ) : (
