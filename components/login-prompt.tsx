@@ -45,12 +45,10 @@ export function LoginPrompt({ onLoginSuccess }: LoginPromptProps) {
         const loginSuccessEvent = new Event("nostr:login-success")
         window.dispatchEvent(loginSuccessEvent)
 
-        // Call the onLoginSuccess callback if provided
         if (onLoginSuccess) {
           onLoginSuccess()
         }
 
-        // Redirect to home page
         router.push("/")
       } else {
         toast({
@@ -65,16 +63,13 @@ export function LoginPrompt({ onLoginSuccess }: LoginPromptProps) {
   const handleGenerateNew = () => {
     login()
 
-    // Dispatch custom event for login success
     const loginSuccessEvent = new Event("nostr:login-success")
     window.dispatchEvent(loginSuccessEvent)
 
-    // Call the onLoginSuccess callback if provided
     if (onLoginSuccess) {
       onLoginSuccess()
     }
 
-    // Redirect to home page
     router.push("/")
   }
 
@@ -89,7 +84,7 @@ export function LoginPrompt({ onLoginSuccess }: LoginPromptProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="privateKey">Private Key (hex or nsec format)</Label>
+            <Label htmlFor="privateKey">Private Key (hex or nsec)</Label>
             <Input
               id="privateKey"
               type="password"
@@ -111,4 +106,3 @@ export function LoginPrompt({ onLoginSuccess }: LoginPromptProps) {
     </div>
   )
 }
-
