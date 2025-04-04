@@ -34,12 +34,12 @@ export function Timeline() {
     const fetchNotes = async () => {
       try {
         const filters: any = {
-          kinds: [1],
+          kinds: [1], // kind 1 = text notes
           limit: 50,
         };
 
         if (activeTab === "following" && publicKey) {
-          // Ambil event follow (contacts) sebagai referensi untuk siapa yang diikuti
+          // Ambil event follow (contacts) sebagai referensi siapa yang diikuti
           const followEvents = await pool.list(relays, {
             kinds: [3],
             authors: [publicKey],
@@ -60,7 +60,6 @@ export function Timeline() {
           }
         }
 
-        // Gunakan pool.list untuk mendapatkan array events
         const events = await pool.list(relays, filters);
 
         if (!Array.isArray(events) || events.length === 0) {
