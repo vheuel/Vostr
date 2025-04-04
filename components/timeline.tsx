@@ -25,7 +25,6 @@ export function Timeline() {
   const [activeTab, setActiveTab] = useState("for-you")
   const [error, setError] = useState<string | null>(null)
 
-  // Use a more compatible approach that should work with any version of nostr-tools
   useEffect(() => {
     if (!pool) return
 
@@ -33,138 +32,95 @@ export function Timeline() {
     setError(null)
     setNotes([])
 
-    // Create a safety timeout to ensure we always show something
+    // Safety timeout untuk memastikan UI merespon jika koneksi terlalu lama
     const safetyTimeout = setTimeout(() => {
-      if (loading) {
-        setLoading(false)
-        setError("Connection timed out. Please try again later.")
-      }
+      setLoading(false)
+      setError("Connection timed out. Please try again later.")
     }, 15000)
 
-    try {
-      // Use a simpler approach with fewer relays
-      const singleRelay = relays[0] || "wss://relay.damus.io"
+    const singleRelay = relays[0] || "wss://relay.damus.io"
+    const filter: any = {
+      kinds: [1],
+      limit: 20,
+    }
 
-      // Create a simple filter
-      const filter = {
-        kinds: [1],
-        limit: 20,
-      }
+    // Filter khusus untuk tab "following"
+    if (activeTab === "following" && publicKey) {
+      filter.authors = [publicKey]
+    }
 
-      // Add author filter for "following" tab
-      if (activeTab === "following" && publicKey) {
-        filter.authors = [publicKey]
-      }
+    const events: NostrEvent[] = []
 
-      // Use a simple array to collect events
-      const events: NostrEvent[] = []
-
-      // Try to use the most basic subscription method that should be available in all versions
-      try {
-        // Check what methods are available on the pool
-        if (typeof pool.get === "function") {
-          // Use pool.get if available
-          pool
-            .get(relays, filter)
-            .then((receivedEvents) => {
-              // Add null check before sorting
-              if (receivedEvents && Array.isArray(receivedEvents)) {
-                setNotes(receivedEvents.sort((a, b) => b.created_at - a.created_at))
-              } else {
-                // Handle case where receivedEvents is null or not an array
-                console.log("Received null or invalid events from pool.get")
-                setNotes([])
-              }
-              setLoading(false)
-              clearTimeout(safetyTimeout)
-            })
-            .catch((e) => {
-              console.error("Error fetching events with pool.get:", e)
-              setLoading(false)
-              setError("Failed to load notes. Please try again.")
-              clearTimeout(safetyTimeout)
-            })
-        } else {
-          // Fall back to subscribeMany which should be available in most versions
-          // Use a more compatible approach for callbacks
-          const sub = pool.subscribeMany(
-            [singleRelay],
-            [filter],
-            // First argument is the event handler
-            (event: NostrEvent) => {
-              events.push(event)
-            },
-            // Second argument is the EOSE (End of Stored Events) handler
-            () => {
-              setNotes(events.sort((a, b) => b.created_at - a.created_at))
-              setLoading(false)
-              clearTimeout(safetyTimeout)
-
-              // Try to close the subscription if possible
-              try {
-                if (sub && typeof sub.close === "function") {
-                  sub.close()
-                } else if (sub && typeof sub.unsub === "function") {
-                  sub.unsub()
-                }
-              } catch (closeError) {
-                console.error("Error closing subscription:", closeError)
-              }
-            },
-          )
-
-          // Fallback in case onEose doesn't fire
-          setTimeout(() => {
-            if (loading) {
-              setNotes(events.sort((a, b) => b.created_at - a.created_at))
-              setLoading(false)
-              clearTimeout(safetyTimeout)
-
-              // Try to close the subscription if possible
-              try {
-                if (sub && typeof sub.close === "function") {
-                  sub.close()
-                } else if (sub && typeof sub.unsub === "function") {
-                  sub.unsub()
-                }
-              } catch (closeError) {
-                console.error("Error closing subscription:", closeError)
-              }
-            }
-          }, 5000)
-        }
-      } catch (fetchError) {
-        console.error("Error in fetch operation:", fetchError)
-
-        // Last resort: use mock data
-        setNotes([
-          {
-            id: "mock1",
-            pubkey: "mock_pubkey_1",
-            created_at: Math.floor(Date.now() / 1000) - 300,
-            kind: 1,
-            tags: [],
-            content: "This is a fallback note because we couldn't connect to Nostr. Please try again later.",
-            sig: "mock_sig",
+    // Gunakan metode pool.get jika tersedia
+    if (typeof pool.get === "function") {
+      pool
+        .get(relays, filter)
+        .then((receivedEvents: NostrEvent[]) => {
+          if (receivedEvents && Array.isArray(receivedEvents)) {
+            setNotes(receivedEvents.sort((a, b) => b.created_at - a.created_at))
+          } else {
+            console.log("Received null or invalid events from pool.get")
+            setNotes([])
+          }
+          setLoading(false)
+          clearTimeout(safetyTimeout)
+        })
+        .catch((e: any) => {
+          console.error("Error fetching events with pool.get:", e)
+          setLoading(false)
+          setError("Failed to load notes. Please try again.")
+          clearTimeout(safetyTimeout)
+        })
+    }
+    // Jika pool.get tidak tersedia, gunakan subscribeMany dengan objek konfigurasi
+    else if (typeof pool.subscribeMany === "function") {
+      const sub = pool.subscribeMany(
+        [singleRelay],
+        [filter],
+        {
+          onEvent: (event: NostrEvent) => {
+            events.push(event)
           },
-        ])
-        setLoading(false)
-        setError("Failed to connect to Nostr network. Showing fallback content.")
-        clearTimeout(safetyTimeout)
-      }
-    } catch (e) {
-      console.error("Error in timeline:", e)
+          onEose: () => {
+            setNotes(events.sort((a, b) => b.created_at - a.created_at))
+            setLoading(false)
+            clearTimeout(safetyTimeout)
+            // Coba tutup langganan jika memungkinkan
+            if (sub && typeof sub.close === "function") {
+              sub.close()
+            } else if (sub && typeof sub.unsub === "function") {
+              sub.unsub()
+            }
+          },
+        }
+      )
+
+      // Fallback jika onEose tidak terpanggil
+      setTimeout(() => {
+        if (loading) {
+          setNotes(events.sort((a, b) => b.created_at - a.created_at))
+          setLoading(false)
+          clearTimeout(safetyTimeout)
+          if (sub && typeof sub.close === "function") {
+            sub.close()
+          } else if (sub && typeof sub.unsub === "function") {
+            sub.unsub()
+          }
+        }
+      }, 5000)
+    } else {
+      console.error("No supported subscription method found on pool")
+      setError("Subscription method not supported.")
       setLoading(false)
-      setError("Failed to load notes. Please try again.")
       clearTimeout(safetyTimeout)
     }
 
     return () => {
       clearTimeout(safetyTimeout)
     }
-  }, [pool, relays, activeTab, publicKey, loading])
+  }, [pool, relays, activeTab, publicKey])
 
-  // Function to refresh the timeline
+  // Fungsi untuk me-refresh timeline
   const handleRefresh = () => {
     setLoading(true)
   }
@@ -229,4 +185,3 @@ export function Timeline() {
     </div>
   )
 }
-
