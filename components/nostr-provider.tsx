@@ -17,9 +17,9 @@ export type NostrContextType = {
   notes: NostrEvent[];
   login: (privateKey?: string) => void;
   logout: () => void;
-  publishNote: (content: string) => void;
-  publishReaction: (eventId: string, reaction: string) => void;
-  publishRepost: (eventId: string) => void;
+  publishNote: (content: string) => Promise<void>;
+  publishReaction: (eventId: string, reaction: string) => Promise<void>;
+  publishRepost: (eventId: string) => Promise<void>;
   addNote: (note: NostrEvent) => void;
 };
 
@@ -30,9 +30,9 @@ const NostrContext = createContext<NostrContextType>({
   notes: [],
   login: () => {},
   logout: () => {},
-  publishNote: () => {},
-  publishReaction: () => {},
-  publishRepost: () => {},
+  publishNote: async () => {},
+  publishReaction: async () => {},
+  publishRepost: async () => {},
   addNote: () => {},
 });
 
@@ -47,11 +47,13 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
+      console.log("Initializing Nostr pool...");
       const newPool = new SimplePool({
         eoseSubTimeout: 3000,
         getTimeout: 3000,
       });
       setPool(newPool);
+      console.log("Pool created.");
 
       const storedPublicKey = document.cookie
         .split("; ")
@@ -60,12 +62,16 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
       const storedPrivateKey = localStorage.getItem("nostr-private-key");
 
+      console.log("Stored public key:", storedPublicKey);
+      console.log("Stored private key exists:", !!storedPrivateKey);
+
       if (storedPublicKey && storedPrivateKey) {
         setPublicKey(storedPublicKey);
         setPrivateKey(storedPrivateKey);
       }
 
       return () => {
+        console.log("Closing Nostr pool...");
         try {
           newPool.close(relays);
         } catch (error) {
@@ -73,7 +79,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         }
       };
     } catch (error) {
-      console.error("Error initializing Nostr pool:", error);
+      console.error("Error initializing Nostr provider:", error);
     }
   }, []);
 
@@ -87,13 +93,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      // Validasi format hex
-      if (!/^[0-9a-f]{64}$/i.test(privKey)) {
-        throw new Error("Invalid private key format");
-      }
-
       const pubKey = getPublicKey(privKey);
-
       document.cookie = `nostr-public-key=${pubKey}; path=/; max-age=2592000`;
       localStorage.setItem("nostr-private-key", privKey);
 
@@ -104,8 +104,10 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         title: "Logged in successfully",
         description: "You are now connected to Nostr",
       });
+
+      console.log("Login success. Public key:", pubKey);
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Login failed:", error);
       toast({
         title: "Login failed",
         description: "Invalid private key",
@@ -125,9 +127,11 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       title: "Logged out",
       description: "You have been disconnected from Nostr",
     });
+
+    console.log("User logged out.");
   };
 
-  const publishNote = (content: string) => {
+  const publishNote = async (content: string) => {
     if (!pool || !publicKey || !privateKey) {
       toast({
         title: "Not logged in",
@@ -147,15 +151,17 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       };
 
       const signedEvent = finalizeEvent(event, privateKey);
-      pool.publish(relays, signedEvent);
+      await pool.publish(relays, signedEvent);
       addNote(signedEvent);
 
       toast({
         title: "Note published",
         description: "Your note has been published to Nostr",
       });
+
+      console.log("Note published:", signedEvent);
     } catch (error) {
-      console.error("Publish note error:", error);
+      console.error("Error publishing note:", error);
       toast({
         title: "Failed to publish note",
         description: "An error occurred while publishing your note",
@@ -164,42 +170,38 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const publishReaction = (eventId: string, reaction: string) => {
+  const publishReaction = async (eventId: string, reaction: string) => {
     if (!pool || !publicKey || !privateKey) return;
 
-    try {
-      const event = {
-        kind: 7,
-        pubkey: publicKey,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [["e", eventId]],
-        content: reaction,
-      };
+    const event = {
+      kind: 7,
+      pubkey: publicKey,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [["e", eventId]],
+      content: reaction,
+    };
 
-      const signedEvent = finalizeEvent(event, privateKey);
-      pool.publish(relays, signedEvent);
-    } catch (error) {
-      console.error("Publish reaction error:", error);
-    }
+    const signedEvent = finalizeEvent(event, privateKey);
+    await pool.publish(relays, signedEvent);
+
+    console.log("Reaction published:", signedEvent);
   };
 
-  const publishRepost = (eventId: string) => {
+  const publishRepost = async (eventId: string) => {
     if (!pool || !publicKey || !privateKey) return;
 
-    try {
-      const event = {
-        kind: 6,
-        pubkey: publicKey,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [["e", eventId]],
-        content: "",
-      };
+    const event = {
+      kind: 6,
+      pubkey: publicKey,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [["e", eventId]],
+      content: "",
+    };
 
-      const signedEvent = finalizeEvent(event, privateKey);
-      pool.publish(relays, signedEvent);
-    } catch (error) {
-      console.error("Publish repost error:", error);
-    }
+    const signedEvent = finalizeEvent(event, privateKey);
+    await pool.publish(relays, signedEvent);
+
+    console.log("Repost published:", signedEvent);
   };
 
   const addNote = (note: NostrEvent) => {
