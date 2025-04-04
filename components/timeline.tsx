@@ -8,7 +8,6 @@ import { ComposeNote } from "./compose-note";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-
 type NostrEvent = {
   id: string;
   pubkey: string;
