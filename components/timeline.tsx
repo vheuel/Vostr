@@ -1,62 +1,81 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { useNostr } from "./nostr-provider";
-import { Note } from "./note";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ComposeNote } from "./compose-note";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useEffect, useState } from "react"
+import { useNostr } from "./nostr-provider"
+import { Note } from "./note"
+import { Skeleton } from "@/components/ui/skeleton"
+import { ComposeNote } from "./compose-note"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type NostrEvent = {
-  id: string;
-  pubkey: string;
-  created_at: number;
-  kind: number;
-  tags: string[][];
-  content: string;
-  sig: string;
-};
+  id: string
+  pubkey: string
+  created_at: number
+  kind: number
+  tags: string[][]
+  content: string
+  sig: string
+}
 
 export function Timeline() {
-  const { pool, relays, publicKey } = useNostr();
-  const [notes, setNotes] = useState<NostrEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("for-you");
-  const [error, setError] = useState<string | null>(null);
+  const { pool, relays, publicKey } = useNostr()
+  const [notes, setNotes] = useState<NostrEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState("for-you")
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!pool) return;
+    if (!pool || !relays?.length) return
 
-    setLoading(true);
-    setError(null);
-    setNotes([]);
+    setLoading(true)
+    setError(null)
+    setNotes([])
 
     const fetchNotes = async () => {
       try {
-        const events = await pool.get(relays, {
-          kinds: [1], // Kind 1 = Notes
+        const filters: any = {
+          kinds: [1],
           limit: 50,
-        });
-
-        if (events.length === 0) {
-          setError("No notes found");
         }
 
-        setNotes(events);
-      } catch (err) {
-        console.error("Error fetching notes:", err);
-        setError("Failed to fetch notes");
-      } finally {
-        setLoading(false);
-      }
-    };
+        if (activeTab === "following" && publicKey) {
+          // Filter by people user follows
+          const followEvents = await pool.get(relays, { kinds: [3], authors: [publicKey] }) // Kind 3 = contacts
+          const latestFollowEvent = followEvents?.[0]
+          const followed = latestFollowEvent?.tags
+            ?.filter((tag) => tag[0] === "p")
+            ?.map((tag) => tag[1])
 
-    fetchNotes();
-  }, [pool, relays]);
+          if (followed?.length) {
+            filters.authors = followed
+          } else {
+            setNotes([])
+            setError("You are not following anyone yet")
+            setLoading(false)
+            return
+          }
+        }
+
+        const events = await pool.get(relays, filters)
+
+        if (!events.length) {
+          setError("No notes found")
+        }
+
+        setNotes(events)
+      } catch (err) {
+        console.error("Error fetching notes:", err)
+        setError("Failed to fetch notes")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchNotes()
+  }, [pool, relays, activeTab, publicKey])
 
   return (
-    <div>
+    <div className="space-y-4">
       <ComposeNote />
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -64,8 +83,14 @@ export function Timeline() {
           <TabsTrigger value="following">Following</TabsTrigger>
         </TabsList>
       </Tabs>
-      {loading ? <Skeleton /> : notes.map((note) => <Note key={note.id} {...note} />)}
-      {error && <p className="text-red-500">{error}</p>}
+
+      {loading ? (
+        Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)
+      ) : error ? (
+        <p className="text-red-500">{error}</p>
+      ) : (
+        notes.map((note) => <Note key={note.id} {...note} />)
+      )}
     </div>
-  );
+  )
 }
